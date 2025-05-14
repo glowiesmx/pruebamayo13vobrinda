@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
-import OpenAI from "openai"
 import { createClient } from "@supabase/supabase-js"
 
-// NO inicializar OpenAI aquí, sino dentro de la función
+// Asegurar que este código solo se ejecuta en el servidor
+export const runtime = "nodejs"
 
 // Inicializar Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
@@ -15,9 +15,9 @@ export async function POST(request: Request) {
     let respuesta, audioUrl, carta
     try {
       const body = await request.json()
-      respuesta = body.respuesta
-      audioUrl = body.audioUrl
-      carta = body.carta
+      respuesta = body.respuesta || ""
+      audioUrl = body.audioUrl || ""
+      carta = body.carta || {}
     } catch (parseError) {
       console.error("Error parsing request body:", parseError)
       return NextResponse.json({
@@ -35,28 +35,50 @@ export async function POST(request: Request) {
       })
     }
 
-    // Inicializar OpenAI con la API key DENTRO de la función del servidor
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_KEY,
-      // No necesitamos dangerouslyAllowBrowser aquí porque estamos en el servidor
-    })
-
-    const prompt = `
-      Eres el ex más tóxico de Reddit. Evalúa esta respuesta: "${respuesta || "respuesta del usuario"}"
-      - Da feedback en 2 líneas máximo con slang de Gen Z
-      - Si aprueba, sugiere una recompensa ridícula (ej: "PDF de memes para stalkear")
-      - Usa 1 emoji y 1 referencia a Instagram
-      
-      Contexto: La carta era "${carta?.nombre || "carta del juego"}" que trata sobre "${carta?.descripcion || "un desafío"}"
-      ${audioUrl ? "El usuario también grabó un audio (no puedes escucharlo, pero asume que fue increíble)" : ""}
-    `
-
     try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.9,
+      // Asegurarse de que los valores existen
+      const nombreCarta = carta && carta.nombre ? carta.nombre : "carta del juego"
+      const descripcionCarta = carta && carta.descripcion ? carta.descripcion : "un desafío"
+      const respuestaUsuario = respuesta || "respuesta del usuario"
+
+      const prompt = `
+        Eres el ex más tóxico de Reddit. Evalúa esta respuesta: "${respuestaUsuario}"
+        - Da feedback en 2 líneas máximo con slang de Gen Z
+        - Si aprueba, sugiere una recompensa ridícula (ej: "PDF de memes para stalkear")
+        - Usa 1 emoji y 1 referencia a Instagram
+        
+        Contexto: La carta era "${nombreCarta}" que trata sobre "${descripcionCarta}"
+        ${audioUrl ? "El usuario también grabó un audio (no puedes escucharlo, pero asume que fue increíble)" : ""}
+      `
+
+      // Usar fetch directamente en lugar del cliente OpenAI
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.9,
+        }),
       })
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        console.error("Error en la respuesta de OpenAI:", response.status, errorData)
+        throw new Error(`Error en la respuesta de OpenAI: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      // Verificar que la respuesta tiene la estructura esperada
+      if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error("Respuesta de OpenAI inválida o incompleta")
+      }
+
+      const resultado = data.choices[0].message.content || "Respuesta no generada"
 
       // Generar recompensas aleatorias
       const recompensas = generarRecompensasAleatorias()
@@ -76,7 +98,7 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({
-        resultado: completion.choices[0].message.content,
+        resultado: resultado,
         recompensas,
       })
     } catch (openaiError) {
@@ -101,6 +123,8 @@ function generarResultadoPredeterminado() {
     "¡Eso fue tan delulu que hasta Taylor Swift te daría un like! 💅 Mereces un PDF de 'Cómo fingir viajes en Instagram'.",
     "Ese nivel de drama solo lo veo en mis historias destacadas 📱 Te ganaste la playlist 'Canciones para llorar en el Oxxo'.",
     "Main character energy al 100% 🌟 Esto merece un filtro de 'Golden Hour Falso' para tus próximas stories.",
+    "Esa respuesta es más tóxica que mi ex. Necesito ese nivel de caos en mi feed 🔥 Te mereces un curso de 'Red Flags 101'.",
+    "Vibes inmaculadas, bestie. Esto es más aesthetic que mis fotos editadas con 27 filtros 💫 Mereces un preset exclusivo.",
   ]
 
   return resultados[Math.floor(Math.random() * resultados.length)]
@@ -111,18 +135,24 @@ function generarRecompensasAleatorias() {
     "Canciones para llorar en el Oxxo mientras stalkeas a tu ex",
     "Éxitos para fingir que superaste tu tusa",
     "Lo que escuchas cuando te ghostean por 5ta vez",
+    "Soundtrack para tu era villain después de un situationship",
+    "Canciones para fingir que estás en Tulum pero estás en tu cuarto",
   ]
 
   const filtros = [
     "Golden Hour Falso para tus stories de peda casera",
     "Filtro 'Soy un catch pero estoy traumado/a'",
     "Aesthetic Oxxo: Haz que cualquier tienda parezca Tulum",
+    "Filtro 'Me ghostearon pero estoy mejor que nunca'",
+    "Preset 'Soft Launch de relación que durará 2 semanas'",
   ]
 
   const pdfs = [
     "Cómo fingir viajes en el Oxxo: Guía para millennials quebrados",
     "10 captions para fotos de perfil que gritan 'Soy un catch pero estoy traumado/a'",
     "Guía de Ghosteo Épico: Técnicas avanzadas",
+    "Manual del Situationship: Cómo estar en una relación sin compromiso",
+    "Diccionario Gen Z: Para que no te digan Cheugy en 2023",
   ]
 
   return [

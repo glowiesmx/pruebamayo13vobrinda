@@ -1,25 +1,49 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Mic, StopCircle, Send, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { GameMechanics } from "./game-mechanics"
 
 interface ResponseInputProps {
   onSubmit: (text: string, audio: Blob | null) => void
   loading: boolean
+  cardType?: string
+  mesaId?: string
+  initialResponse?: string // Nueva prop para recibir la respuesta del chat
 }
 
-export function ResponseInput({ onSubmit, loading }: ResponseInputProps) {
-  const [text, setText] = useState<string>("")
+export function ResponseInput({
+  onSubmit,
+  loading,
+  cardType = "individual",
+  mesaId = "mesa-default",
+  initialResponse = "", // Valor por defecto
+}: ResponseInputProps) {
+  const [text, setText] = useState<string>(initialResponse) // Usar initialResponse como valor inicial
   const [isRecording, setIsRecording] = useState<boolean>(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [showMechanics, setShowMechanics] = useState<boolean>(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<BlobPart[]>([])
   const { toast } = useToast()
+
+  // Actualizar el texto cuando cambia initialResponse
+  useEffect(() => {
+    if (initialResponse) {
+      setText(initialResponse)
+
+      // Mostrar un toast para confirmar que se cargó la respuesta del chat
+      toast({
+        title: "Respuesta cargada",
+        description: "Tu respuesta del chat ha sido cargada. Puedes editarla antes de enviar.",
+      })
+    }
+  }, [initialResponse, toast])
 
   const startRecording = async () => {
     try {
@@ -68,6 +92,19 @@ export function ResponseInput({ onSubmit, loading }: ResponseInputProps) {
     }
   }
 
+  // Add this function to handle game mechanics completion
+  const handleMechanicsComplete = (score: number) => {
+    toast({
+      title: "¡Puntuación registrada!",
+      description: `Has obtenido ${score} puntos en este desafío.`,
+    })
+    setShowMechanics(false)
+
+    // Continuar con el flujo normal
+    onSubmit(text, audioBlob)
+  }
+
+  // Update the handleSubmit function to show mechanics after submission
   const handleSubmit = () => {
     if ((!text || text.trim() === "") && !audioBlob) {
       toast({
@@ -78,7 +115,19 @@ export function ResponseInput({ onSubmit, loading }: ResponseInputProps) {
       return
     }
 
-    onSubmit(text, audioBlob)
+    // Show game mechanics instead of submitting directly
+    setShowMechanics(true)
+  }
+
+  // Add this at the end of the component, right before the closing tag
+  if (showMechanics) {
+    return (
+      <GameMechanics
+        type={cardType as "individual" | "dueto" | "grupal"}
+        onComplete={handleMechanicsComplete}
+        mesaId={mesaId}
+      />
+    )
   }
 
   return (
@@ -139,7 +188,7 @@ export function ResponseInput({ onSubmit, loading }: ResponseInputProps) {
           ) : (
             <>
               <Send className="mr-2 h-4 w-4" />
-              Subir a mi ✨insta✨
+              Subir a mi ✨finsta✨
             </>
           )}
         </Button>

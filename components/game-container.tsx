@@ -10,11 +10,14 @@ import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
 import { Loader2, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { ContextualChat } from "./contextual-chat"
 
 // Definir los pasos del juego
 enum GameSteps {
   START = "start",
   CHALLENGE = "challenge",
+  CHAT = "chat", // Nuevo paso para la interacción de chat
   RESPONSE = "response",
   REWARD = "reward",
 }
@@ -123,6 +126,20 @@ export function GameContainer() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleChatSubmit = (message: string) => {
+    console.log("Mensaje recibido del chat:", message)
+    setResponse(message)
+
+    // Mostrar un toast para confirmar que se recibió el mensaje
+    toast({
+      title: "Respuesta guardada",
+      description: "Tu respuesta ha sido guardada. Continúa para finalizar.",
+    })
+
+    // No cambiar automáticamente al siguiente paso para permitir que el usuario vea la respuesta del chat
+    // El usuario puede hacer clic en "Continuar" cuando esté listo
   }
 
   const handleResponseSubmit = async (text: string, audio: Blob | null) => {
@@ -270,12 +287,62 @@ export function GameContainer() {
               card={selectedCard}
               challenge={challenge}
               source={challengeSource}
-              onNext={() => setGameStep(GameSteps.RESPONSE)}
+              onNext={() => setGameStep(GameSteps.CHAT)}
             />
           </>
         )
+      case GameSteps.CHAT:
+        return (
+          <>
+            {apiError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error de API</AlertTitle>
+                <AlertDescription>
+                  {apiError}
+                  <div className="mt-2 text-xs">
+                    Fuente del desafío: {challengeSource === "openai" ? "OpenAI" : "Predeterminado"}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-4">
+              <ContextualChat
+                cardType={selectedCard?.tipo || "individual"}
+                cardName={selectedCard?.nombre || ""}
+                challenge={challenge}
+                onSubmit={handleChatSubmit}
+              />
+              <div className="flex justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setGameStep(GameSteps.RESPONSE)}
+                  className="border-pink-300 hover:bg-pink-100"
+                >
+                  Saltar chat y responder directamente
+                </Button>
+                {response && (
+                  <Button
+                    onClick={() => setGameStep(GameSteps.RESPONSE)}
+                    className="bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white"
+                  >
+                    Continuar con mi respuesta
+                  </Button>
+                )}
+              </div>
+            </div>
+          </>
+        )
       case GameSteps.RESPONSE:
-        return <ResponseInput onSubmit={handleResponseSubmit} loading={loading} />
+        return (
+          <ResponseInput
+            onSubmit={handleResponseSubmit}
+            loading={loading}
+            cardType={selectedCard?.tipo || "individual"}
+            mesaId={mesaId}
+            initialResponse={response} // Pasar la respuesta del chat como valor inicial
+          />
+        )
       case GameSteps.REWARD:
         return <RewardDisplay reward={reward} onReset={resetGame} />
       default:
@@ -295,9 +362,11 @@ export function GameContainer() {
               ? "Selecciona una carta"
               : gameStep === GameSteps.CHALLENGE
                 ? "Desafío"
-                : gameStep === GameSteps.RESPONSE
-                  ? "Tu respuesta"
-                  : "Recompensa"}
+                : gameStep === GameSteps.CHAT
+                  ? "Chat"
+                  : gameStep === GameSteps.RESPONSE
+                    ? "Tu respuesta"
+                    : "Recompensa"}
           </span>
         </div>
       </div>

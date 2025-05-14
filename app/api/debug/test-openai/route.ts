@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
-import OpenAI from "openai"
+
+// Asegurar que este código solo se ejecuta en el servidor
+export const runtime = "nodejs"
 
 export async function GET() {
   try {
@@ -12,25 +14,39 @@ export async function GET() {
       })
     }
 
-    // Inicializar OpenAI con la API key DENTRO de la función del servidor
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_KEY,
-      // No necesitamos dangerouslyAllowBrowser aquí porque estamos en el servidor
-    })
-
-    // Intentar hacer una llamada simple a la API
+    // Intentar hacer una llamada simple a la API usando fetch directamente
     try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [{ role: "user", content: "Hola, ¿cómo estás?" }],
-        max_tokens: 10,
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "Hola, ¿cómo estás?" }],
+          max_tokens: 10,
+        }),
       })
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        console.error("Error en la respuesta de OpenAI:", response.status, errorData)
+        throw new Error(`Error en la respuesta de OpenAI: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      // Verificar que la respuesta tiene la estructura esperada
+      if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error("Respuesta de OpenAI inválida o incompleta")
+      }
 
       return NextResponse.json({
         success: true,
         apiKeyConfigured: true,
-        response: completion.choices[0].message,
-        model: completion.model,
+        response: data.choices[0].message,
+        model: data.model,
       })
     } catch (openaiError) {
       console.error("Error llamando a OpenAI:", openaiError)

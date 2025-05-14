@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Brinda - 100 Borrachxs Dijieron",
   description: "Juego social interactivo con IA y recompensas digitales",
   viewport: "width=device-width, initial-scale=1, maximum-scale=1",
-    generator: 'v0.dev'
+  generator: "v0.dev",
 }
 
 export default function RootLayout({
