@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Send, Paperclip, Mic, ImageIcon, Check, CheckCheck, HelpCircle } from "lucide-react"
+import { Send, Paperclip, Mic, ImageIcon, Check, CheckCheck, HelpCircle, Lock } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useToast } from "@/hooks/use-toast"
 
@@ -129,6 +129,50 @@ const aiSuggestions: Record<string, string[]> = {
   ],
 }
 
+// Respuestas finales de la IA para cada tipo de carta
+const finalResponses: Record<string, string[]> = {
+  "El Delulu": [
+    "¡Eso es tan delulu que hasta yo me sorprendo! 😮 Tu respuesta es perfecta para el desafío. ¿Listo para continuar?",
+    "¡Delulu is the solulu! 💫 Tu confesión es exactamente lo que estábamos buscando. ¡Vamos a continuar!",
+    "¡Esa teoría delulu merece un premio! 🏆 Has completado perfectamente el desafío. ¡Sigamos adelante!",
+  ],
+  "El Ghosteador VIP": [
+    "¡La excusa perfecta para un ghosteador profesional! 👻 Has completado el desafío. ¿Continuamos?",
+    "¡Esa excusa es digna del Salón de la Fama del Ghosting! 🏆 Desafío completado con éxito. ¡Vamos al siguiente paso!",
+    "¡Ni mi ex tenía excusas tan creativas! 💀 Tu respuesta es perfecta. ¡Continuemos!",
+  ],
+  "El Storytoxic": [
+    "¡Esa story merece mil likes! 📸✨ Has completado el desafío perfectamente. ¿Listo para seguir?",
+    "¡Mis followers están obsesionados con tu aesthetic! 🔥 Desafío completado con éxito. ¡Vamos al siguiente paso!",
+    "¡Eso es tan aesthetic que hasta los filtros de Instagram están celosos! 💅 Tu respuesta es perfecta. ¡Continuemos!",
+  ],
+  "El Add to Cart": [
+    "¡Amazon debería darte un premio por cliente impulsivo del año! 🛒 Has completado el desafío. ¿Continuamos?",
+    "¡Esa compra es tan random que hasta el algoritmo está confundido! 💸 Desafío completado con éxito. ¡Vamos al siguiente paso!",
+    "¡Mi carrito de compras se siente aburrido comparado con el tuyo! 🛍️ Tu respuesta es perfecta. ¡Continuemos!",
+  ],
+  "El Situationship": [
+    "¡Esa respuesta tiene más red flags que mi ex! 🚩 Has completado el desafío perfectamente. ¿Listo para seguir?",
+    "¡El rey/reina de la ambigüedad emocional! 👑 Desafío completado con éxito. ¡Vamos al siguiente paso!",
+    "¡Ni los terapeutas podrían descifrar esa respuesta! 💭 Tu respuesta es perfecta. ¡Continuemos!",
+  ],
+  "El Soft Launch": [
+    "¡Ese soft launch es tan sutil que ni Sherlock Holmes lo descifraría! 🔍 Has completado el desafío. ¿Continuamos?",
+    "¡Instagram va a explotar con ese caption tan misterioso! 📱✨ Desafío completado con éxito. ¡Vamos al siguiente paso!",
+    "¡Mis seguidores están obsesionados con tu soft launch! 👀 Tu respuesta es perfecta. ¡Continuemos!",
+  ],
+  "El Rizz Master": [
+    "¡Con ese rizz hasta yo caería! 💘 Has completado el desafío perfectamente. ¿Listo para seguir?",
+    "¡El CEO del rizz ha hablado! 👑 Desafío completado con éxito. ¡Vamos al siguiente paso!",
+    "¡Esa línea debería estar en el manual del rizz! 📚 Tu respuesta es perfecta. ¡Continuemos!",
+  ],
+  "El Main Character": [
+    "¡Netflix quiere comprar los derechos de tu historia! 🎬 Has completado el desafío. ¿Continuamos?",
+    "¡El main character energy está fuera de control! ✨ Desafío completado con éxito. ¡Vamos al siguiente paso!",
+    "¡Tu vida merece una serie de 10 temporadas! 🍿 Tu respuesta es perfecta. ¡Continuemos!",
+  ],
+}
+
 export function ContextualChat({ cardType, cardName, challenge, onSubmit }: ContextualChatProps) {
   const [messages, setMessages] = useState<
     Array<{
@@ -140,9 +184,14 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
     }>
   >([])
   const [newMessage, setNewMessage] = useState("")
-  const [submittedMessage, setSubmittedMessage] = useState<string | null>(null)
+  const [userMessageCount, setUserMessageCount] = useState(0)
+  const [chatCompleted, setChatCompleted] = useState(false)
+  const [finalResponse, setFinalResponse] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
+
+  // Máximo de mensajes que el usuario puede enviar
+  const MAX_USER_MESSAGES = 2
 
   // Obtener el contexto adecuado según la carta
   const context = chatContexts[cardName] || {
@@ -164,6 +213,9 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
         status: "read",
       },
     ])
+    setUserMessageCount(0)
+    setChatCompleted(false)
+    setFinalResponse("")
   }, [cardName, context.initialMessage])
 
   // Auto-scroll al último mensaje
@@ -171,17 +223,20 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Efecto para notificar al componente padre cuando se envía un mensaje
+  // Efecto para enviar automáticamente la respuesta final después de un tiempo
   useEffect(() => {
-    if (submittedMessage) {
-      console.log("Enviando mensaje al componente padre:", submittedMessage)
-      onSubmit(submittedMessage)
-      setSubmittedMessage(null)
+    if (chatCompleted && finalResponse) {
+      const timer = setTimeout(() => {
+        console.log("Enviando respuesta final al componente padre:", finalResponse)
+        onSubmit(finalResponse)
+      }, 3000) // Esperar 3 segundos antes de enviar la respuesta final
+
+      return () => clearTimeout(timer)
     }
-  }, [submittedMessage, onSubmit])
+  }, [chatCompleted, finalResponse, onSubmit])
 
   const handleSendMessage = () => {
-    if (!newMessage.trim()) return
+    if (!newMessage.trim() || chatCompleted) return
 
     const newMsg = {
       id: messages.length + 1,
@@ -192,30 +247,46 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
     }
 
     setMessages([...messages, newMsg])
-
-    // Guardar el mensaje para notificar al componente padre
-    setSubmittedMessage(newMessage)
-
-    // Limpiar el campo de entrada
     setNewMessage("")
 
-    // Mostrar un toast para confirmar que se envió el mensaje
-    toast({
-      title: "Mensaje enviado",
-      description: "Tu respuesta ha sido registrada",
-    })
+    // Incrementar el contador de mensajes del usuario
+    const newCount = userMessageCount + 1
+    setUserMessageCount(newCount)
 
     // Simular una respuesta después de un breve retraso
     setTimeout(() => {
-      const responseMsg = {
-        id: messages.length + 2,
-        text: getRandomResponse(cardName),
-        sender: "other" as const,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        status: "read" as const,
-      }
+      // Si el usuario ha alcanzado el límite de mensajes, enviar la respuesta final
+      if (newCount >= MAX_USER_MESSAGES) {
+        const finalResponseText = getFinalResponse(cardName)
+        setFinalResponse(newMessage) // Guardar el último mensaje del usuario como respuesta final
 
-      setMessages((prevMessages) => [...prevMessages, responseMsg])
+        const finalMsg = {
+          id: messages.length + 2,
+          text: finalResponseText,
+          sender: "other" as const,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          status: "read" as const,
+        }
+
+        setMessages((prevMessages) => [...prevMessages, finalMsg])
+        setChatCompleted(true)
+
+        toast({
+          title: "Chat completado",
+          description: "Tu respuesta ha sido registrada. Continuando automáticamente...",
+        })
+      } else {
+        // Si no ha alcanzado el límite, enviar una respuesta normal
+        const responseMsg = {
+          id: messages.length + 2,
+          text: getRandomResponse(cardName),
+          sender: "other" as const,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          status: "read" as const,
+        }
+
+        setMessages((prevMessages) => [...prevMessages, responseMsg])
+      }
     }, 1000)
   }
 
@@ -228,7 +299,7 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
       ],
       "El Ghosteador VIP": [
         "Esa excusa es tan creativa que casi te creo... casi 👻",
-        "¿En serio? Esa es tu excusa después de 3 meses? 💀",
+        "¿En serio? ¿Esa es tu excusa después de 3 meses? 💀",
         "Ghosteador nivel: experto. Al menos eres honesto 🏆",
       ],
       "El Storytoxic": [
@@ -269,6 +340,15 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
     return cardResponses[Math.floor(Math.random() * cardResponses.length)]
   }
 
+  const getFinalResponse = (cardName: string): string => {
+    const cardFinalResponses = finalResponses[cardName] || [
+      "¡Respuesta perfecta! 🌟 Has completado el desafío. ¡Continuemos!",
+      "¡Increíble! ✨ Tu respuesta es justo lo que buscábamos. ¡Vamos al siguiente paso!",
+      "¡Excelente trabajo! 🏆 Has completado el desafío con éxito. ¡Sigamos adelante!",
+    ]
+    return cardFinalResponses[Math.floor(Math.random() * cardFinalResponses.length)]
+  }
+
   const insertSuggestion = (suggestion: string) => {
     setNewMessage(suggestion)
     toast({
@@ -304,31 +384,36 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
             <p className="text-xs text-white/70">Desafío: {challenge.substring(0, 30)}...</p>
           </div>
         </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-white">
-              <HelpCircle className="h-5 w-5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80">
-            <div className="space-y-2">
-              <h4 className="font-medium">Sugerencias de AI</h4>
-              <p className="text-sm text-gray-500">¿No sabes qué escribir? Prueba estas ideas:</p>
-              <div className="space-y-2 mt-2">
-                {(aiSuggestions[cardName] || []).map((suggestion, index) => (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    className="w-full justify-start h-auto py-2 px-3 text-left"
-                    onClick={() => insertSuggestion(suggestion)}
-                  >
-                    <span className="truncate">{suggestion}</span>
-                  </Button>
-                ))}
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-white bg-white/20 px-2 py-1 rounded-full">
+            {userMessageCount}/{MAX_USER_MESSAGES} mensajes
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-white">
+                <HelpCircle className="h-5 w-5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-2">
+                <h4 className="font-medium">Sugerencias de AI</h4>
+                <p className="text-sm text-gray-500">¿No sabes qué escribir? Prueba estas ideas:</p>
+                <div className="space-y-2 mt-2">
+                  {(aiSuggestions[cardName] || []).map((suggestion, index) => (
+                    <Button
+                      key={index}
+                      variant="outline"
+                      className="w-full justify-start h-auto py-2 px-3 text-left"
+                      onClick={() => insertSuggestion(suggestion)}
+                    >
+                      <span className="truncate">{suggestion}</span>
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* Chat messages */}
@@ -351,32 +436,40 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
               </div>
             </div>
           ))}
+          {chatCompleted && (
+            <div className="flex justify-center my-2">
+              <div className="bg-yellow-100 text-yellow-800 text-xs font-medium px-3 py-1 rounded-full flex items-center">
+                <Lock className="h-3 w-3 mr-1" /> Chat completado - Continuando automáticamente...
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input area */}
         <div className="p-2 bg-gray-50 border-t flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="text-gray-500">
+          <Button variant="ghost" size="icon" className="text-gray-500" disabled={chatCompleted}>
             <Paperclip className="h-5 w-5" />
           </Button>
           <Input
-            placeholder={context.placeholder}
+            placeholder={chatCompleted ? "Chat completado..." : context.placeholder}
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
             className="flex-1"
+            disabled={chatCompleted}
           />
-          <Button variant="ghost" size="icon" className="text-gray-500">
+          <Button variant="ghost" size="icon" className="text-gray-500" disabled={chatCompleted}>
             <ImageIcon className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" className="text-gray-500">
+          <Button variant="ghost" size="icon" className="text-gray-500" disabled={chatCompleted}>
             <Mic className="h-5 w-5" />
           </Button>
           <Button
             onClick={handleSendMessage}
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() || chatCompleted}
             size="icon"
-            className="bg-pink-500 hover:bg-pink-600 text-white"
+            className={`${chatCompleted ? "bg-gray-300 text-gray-500" : "bg-pink-500 hover:bg-pink-600 text-white"}`}
           >
             <Send className="h-5 w-5" />
           </Button>

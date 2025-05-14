@@ -135,11 +135,13 @@ export function GameContainer() {
     // Mostrar un toast para confirmar que se recibió el mensaje
     toast({
       title: "Respuesta guardada",
-      description: "Tu respuesta ha sido guardada. Continúa para finalizar.",
+      description: "Tu respuesta ha sido guardada. Continuando automáticamente...",
     })
 
-    // No cambiar automáticamente al siguiente paso para permitir que el usuario vea la respuesta del chat
-    // El usuario puede hacer clic en "Continuar" cuando esté listo
+    // Cambiar automáticamente al siguiente paso después de un breve retraso
+    setTimeout(() => {
+      setGameStep(GameSteps.RESPONSE)
+    }, 2000)
   }
 
   const handleResponseSubmit = async (text: string, audio: Blob | null) => {
@@ -176,6 +178,7 @@ export function GameContainer() {
           carta_id: selectedCard.id,
           contenido: text,
           audio_url: audioUrl,
+          mesa_id: mesaId,
         })
       } catch (dbError) {
         console.error("Error al guardar respuesta:", dbError)
@@ -313,7 +316,7 @@ export function GameContainer() {
                 challenge={challenge}
                 onSubmit={handleChatSubmit}
               />
-              <div className="flex justify-center gap-3">
+              <div className="flex justify-center">
                 <Button
                   variant="outline"
                   onClick={() => setGameStep(GameSteps.RESPONSE)}
@@ -321,14 +324,6 @@ export function GameContainer() {
                 >
                   Saltar chat y responder directamente
                 </Button>
-                {response && (
-                  <Button
-                    onClick={() => setGameStep(GameSteps.RESPONSE)}
-                    className="bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white"
-                  >
-                    Continuar con mi respuesta
-                  </Button>
-                )}
               </div>
             </div>
           </>
