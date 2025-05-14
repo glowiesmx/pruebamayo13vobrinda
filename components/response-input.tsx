@@ -139,7 +139,7 @@ export function ResponseInput({ onSubmit, loading }: ResponseInputProps) {
           ) : (
             <>
               <Send className="mr-2 h-4 w-4" />
-              Subir a mi ✨finsta✨
+              Subir a mi ✨insta✨
             </>
           )}
         </Button>
