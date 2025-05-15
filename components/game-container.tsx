@@ -8,16 +8,19 @@ import { RewardDisplay } from "./reward-display"
 import { createClient } from "@supabase/supabase-js"
 import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
-import { Loader2, AlertCircle } from "lucide-react"
+import { Loader2, AlertCircle, Users } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { ContextualChat } from "./contextual-chat"
+import { useRouter } from "next/navigation"
+import { Badge } from "@/components/ui/badge"
+import { MesaStats } from "./mesa-stats"
 
 // Definir los pasos del juego
 enum GameSteps {
   START = "start",
   CHALLENGE = "challenge",
-  CHAT = "chat", // Nuevo paso para la interacción de chat
+  CHAT = "chat",
   RESPONSE = "response",
   REWARD = "reward",
 }
@@ -38,12 +41,140 @@ export function GameContainer() {
   const [mesaId, setMesaId] = useState<string>("")
   const [loading, setLoading] = useState<boolean>(false)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string | null>(null)
+  const [jugadores, setJugadores] = useState<any[]>([])
   const { toast } = useToast()
+  const router = useRouter()
 
+  // Verificar si el usuario está autenticado
   useEffect(() => {
-    // Generar un ID de mesa aleatorio cuando se monta el componente
-    setMesaId(`mesa-${Math.floor(Math.random() * 10000)}`)
-  }, [])
+    const storedUserId = localStorage.getItem("userId")
+    const storedUserName = localStorage.getItem("userName")
+    const storedMesaId = localStorage.getItem("mesaId")
+
+    if (!storedUserId || !storedUserName) {
+      // Redirigir a la página de login si no hay usuario
+      router.push("/login")
+      return
+    }
+
+    setUserId(storedUserId)
+    setUserName(storedUserName)
+
+    // Si hay una mesa guardada, usarla
+    if (storedMesaId) {
+      setMesaId(storedMesaId)
+      fetchMesaInfo(storedMesaId)
+    } else {
+      // Si no hay mesa, crear una nueva
+      createMesa(storedUserId, storedUserName)
+    }
+  }, [router])
+
+  // Crear una nueva mesa
+  const createMesa = async (userId: string, userName: string) => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/mesas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          userName,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Error al crear mesa")
+      }
+
+      const data = await response.json()
+      setMesaId(data.mesaId)
+      localStorage.setItem("mesaId", data.mesaId)
+
+      toast({
+        title: "Mesa creada",
+        description: `ID de la mesa: ${data.mesaId}`,
+      })
+
+      // Obtener información de la mesa
+      fetchMesaInfo(data.mesaId)
+    } catch (error) {
+      console.error("Error:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo crear la mesa de juego",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Obtener información de la mesa
+  const fetchMesaInfo = async (id: string) => {
+    try {
+      const response = await fetch(`/api/mesas?id=${id}`)
+      if (!response.ok) {
+        throw new Error("Error al obtener información de la mesa")
+      }
+
+      const data = await response.json()
+      setJugadores(data.jugadores || [])
+
+      // Si hay una carta activa, cargarla
+      if (data.mesa?.carta_actual) {
+        // Aquí cargaríamos la carta y el estado del juego
+      }
+    } catch (error) {
+      console.error("Error:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo obtener información de la mesa",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Configurar canal de tiempo real para actualizaciones de la mesa
+  useEffect(() => {
+    if (!mesaId) return
+
+    // Suscribirse a cambios en la mesa
+    const channel = supabase
+      .channel(`mesa-${mesaId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "jugadores_mesa", filter: `mesa_id=eq.${mesaId}` },
+        (payload) => {
+          // Actualizar lista de jugadores cuando se une uno nuevo
+          fetchMesaInfo(mesaId)
+          toast({
+            title: "Nuevo jugador",
+            description: `${payload.new.nombre} se ha unido a la mesa`,
+          })
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "votaciones_respuestas", filter: `mesa_id=eq.${mesaId}` },
+        () => {
+          // Actualizar cuando hay nuevos votos
+          toast({
+            title: "Nuevo voto",
+            description: "Alguien ha votado por una respuesta",
+          })
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [mesaId, toast])
 
   const handleCardSelect = async (card: any) => {
     setSelectedCard(card)
@@ -57,6 +188,22 @@ export function GameContainer() {
       }
 
       console.log("Enviando solicitud para carta:", card.nombre)
+
+      // Actualizar la carta actual en la mesa
+      if (mesaId && userId) {
+        await fetch("/api/mesas/modo", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mesaId,
+            modo: card.tipo || "individual",
+            jugadorActivo: userId,
+            cartaId: card.id,
+          }),
+        })
+      }
 
       const response = await fetch("/api/generate-challenge", {
         method: "POST",
@@ -173,13 +320,21 @@ export function GameContainer() {
       }
 
       // Intentar guardar la respuesta en la base de datos
+      let respuestaId
       try {
-        await supabase.from("respuestas").insert({
-          carta_id: selectedCard.id,
-          contenido: text,
-          audio_url: audioUrl,
-          mesa_id: mesaId,
-        })
+        const { data, error } = await supabase
+          .from("respuestas")
+          .insert({
+            carta_id: selectedCard.id,
+            usuario_id: userId,
+            contenido: text,
+            audio_url: audioUrl,
+            mesa_id: mesaId,
+          })
+          .select()
+
+        if (error) throw error
+        respuestaId = data?.[0]?.id
       } catch (dbError) {
         console.error("Error al guardar respuesta:", dbError)
         // Continuar incluso si hay error en la base de datos
@@ -195,6 +350,8 @@ export function GameContainer() {
           respuesta: text,
           audioUrl,
           carta: selectedCard,
+          respuestaId,
+          mesaId,
         }),
       })
 
@@ -219,6 +376,27 @@ export function GameContainer() {
         throw new Error("Respuesta de validación inválida")
       }
 
+      // Obtener recompensas personalizadas
+      try {
+        const recompensasResponse = await fetch(
+          `/api/recompensas?carta=${encodeURIComponent(selectedCard.nombre)}&tipo=playlist`,
+        )
+        const recompensasData = await recompensasResponse.json()
+
+        if (recompensasData.success && recompensasData.data && recompensasData.data.length > 0) {
+          // Usar recompensas personalizadas si están disponibles
+          data.recompensas = recompensasData.data.map((r: any) => ({
+            tipo: r.tipo,
+            nombre: r.nombre,
+            descripcion: r.descripcion,
+            url: r.url,
+          }))
+        }
+      } catch (recompensasError) {
+        console.error("Error al obtener recompensas personalizadas:", recompensasError)
+        // Continuar con las recompensas predeterminadas
+      }
+
       setReward(data)
       setGameStep(GameSteps.REWARD)
     } catch (error) {
@@ -232,6 +410,7 @@ export function GameContainer() {
             tipo: "playlist",
             nombre: "Playlist Spotify",
             descripcion: "Canciones para llorar en el Oxxo mientras stalkeas a tu ex",
+            url: "https://open.spotify.com/playlist/37i9dQZF1DX6xOPeSOGone",
           },
           {
             tipo: "filtro",
@@ -336,6 +515,7 @@ export function GameContainer() {
             cardType={selectedCard?.tipo || "individual"}
             mesaId={mesaId}
             initialResponse={response} // Pasar la respuesta del chat como valor inicial
+            jugadores={jugadores}
           />
         )
       case GameSteps.REWARD:
@@ -345,11 +525,23 @@ export function GameContainer() {
     }
   }
 
+  // Si no hay usuario, mostrar pantalla de carga
+  if (!userId || !userName) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="h-8 w-8 animate-spin text-pink-500" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
         <div className="flex items-center gap-2">
           <span className="bg-pink-100 text-pink-800 text-xs font-medium px-2.5 py-0.5 rounded">Mesa: {mesaId}</span>
+          <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200 flex items-center">
+            <Users className="h-3 w-3 mr-1" /> {jugadores.length} jugadores
+          </Badge>
         </div>
         <div className="flex items-center gap-2">
           <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded">
@@ -366,6 +558,8 @@ export function GameContainer() {
         </div>
       </div>
 
+      {mesaId && <MesaStats mesaId={mesaId} />}
+
       {loading && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg flex flex-col items-center">
@@ -381,6 +575,18 @@ export function GameContainer() {
             ¿Listo para ser el main character de tu propia comedia de errores? 💃
           </h2>
           <p className="text-lg mb-6">Selecciona una carta y prepárate para el desmadre con tus amigos</p>
+          {jugadores.length > 0 && (
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h3 className="font-medium mb-2">Jugadores en esta mesa:</h3>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {jugadores.map((jugador) => (
+                  <Badge key={jugador.id} variant="outline" className="bg-white">
+                    {jugador.nombre}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

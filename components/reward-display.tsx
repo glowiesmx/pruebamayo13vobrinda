@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Share2, RefreshCw } from "lucide-react"
+import { Share2, RefreshCw, ExternalLink } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface RewardDisplayProps {
@@ -50,6 +50,16 @@ export function RewardDisplay({ reward, onReset }: RewardDisplayProps) {
                 <div className="w-full sm:w-auto">
                   <p className="font-medium text-sm sm:text-base">{recompensa.nombre}</p>
                   <p className="text-xs sm:text-sm text-gray-600 break-words">{recompensa.descripcion}</p>
+                  {recompensa.url && (
+                    <a
+                      href={recompensa.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs sm:text-sm text-pink-600 hover:text-pink-800 flex items-center mt-1"
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" /> Abrir enlace
+                    </a>
+                  )}
                 </div>
               </div>
             )) || (

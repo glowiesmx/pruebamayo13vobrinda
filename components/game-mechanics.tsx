@@ -8,48 +8,52 @@ import { Users, User, UserPlus } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { VotingSystem } from "./voting-system"
 import { useToast } from "@/hooks/use-toast"
+import { createClient } from "@supabase/supabase-js"
+
+interface Player {
+  id: string
+  name: string
+  avatar?: string
+}
 
 interface GameMechanicsProps {
   type: "individual" | "dueto" | "grupal"
   onComplete: (score: number) => void
-  players?: string[]
+  players?: Player[]
   mesaId?: string
+  activePlayer?: string
+  partnerPlayer?: string
 }
+
+// Crear cliente de Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 export function GameMechanics({
   type,
   onComplete,
-  players = ["Jugador 1", "Jugador 2", "Jugador 3"],
+  players = [],
   mesaId = "mesa-default",
+  activePlayer,
+  partnerPlayer,
 }: GameMechanicsProps) {
-  const [activePlayer, setActivePlayer] = useState<string | null>(type === "individual" ? players[0] : null)
-  const [partnerPlayer, setPartnerPlayer] = useState<string | null>(null)
   const [showVoting, setShowVoting] = useState<boolean>(false)
   const { toast } = useToast()
+  const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null
 
-  // Convertir los nombres de jugadores a objetos de jugador para el sistema de votación
-  const playerObjects = players.map((name, index) => ({
-    id: `player-${index}`,
-    name,
-  }))
+  // Si no hay jugadores, usar jugadores predeterminados
+  const defaultPlayers: Player[] = [
+    { id: "player-1", name: "Jugador 1" },
+    { id: "player-2", name: "Jugador 2" },
+    { id: "player-3", name: "Jugador 3" },
+  ]
 
-  // Seleccionar un compañero para el dueto
-  const selectPartner = (player: string) => {
-    if (type !== "dueto" || activePlayer === null) return
-    setPartnerPlayer(player)
-  }
+  // Usar jugadores proporcionados o predeterminados
+  const gamePlayers = players.length > 0 ? players : defaultPlayers
 
   // Iniciar la votación
   const startVoting = () => {
-    if (type === "dueto" && !partnerPlayer) {
-      toast({
-        title: "Selecciona un compañero",
-        description: "Debes seleccionar un compañero para el dueto antes de continuar",
-        variant: "destructive",
-      })
-      return
-    }
-
     setShowVoting(true)
   }
 
@@ -59,17 +63,13 @@ export function GameMechanics({
 
     if (type === "individual") {
       // Para individual, usar la puntuación del jugador activo
-      const activePlayerId = playerObjects.find((p) => p.name === activePlayer)?.id
-      if (activePlayerId) {
-        finalScore = scores[activePlayerId] || 0
+      if (activePlayer) {
+        finalScore = scores[activePlayer] || 0
       }
     } else if (type === "dueto") {
       // Para dueto, sumar las puntuaciones de ambos jugadores
-      const activePlayerId = playerObjects.find((p) => p.name === activePlayer)?.id
-      const partnerPlayerId = playerObjects.find((p) => p.name === partnerPlayer)?.id
-
-      if (activePlayerId && partnerPlayerId) {
-        finalScore = (scores[activePlayerId] || 0) + (scores[partnerPlayerId] || 0)
+      if (activePlayer && partnerPlayer) {
+        finalScore = (scores[activePlayer] || 0) + (scores[partnerPlayer] || 0)
       }
     } else {
       // Para grupal, sumar todas las puntuaciones
@@ -83,11 +83,12 @@ export function GameMechanics({
     return (
       <VotingSystem
         cardType={type}
-        players={playerObjects}
-        activePlayer={playerObjects.find((p) => p.name === activePlayer)?.id}
-        partnerPlayer={playerObjects.find((p) => p.name === partnerPlayer)?.id}
+        players={gamePlayers}
+        activePlayer={activePlayer}
+        partnerPlayer={partnerPlayer}
         onComplete={handleVotingComplete}
         mesaId={mesaId}
+        currentUserId={userId || undefined}
       />
     )
   }
@@ -124,55 +125,43 @@ export function GameMechanics({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {type === "individual" && (
+        {type === "individual" && activePlayer && (
           <div className="bg-pink-50 p-4 rounded-lg">
             <p className="font-medium mb-2">Jugador activo:</p>
             <div className="flex items-center gap-2">
               <Avatar>
-                <AvatarFallback className="bg-pink-300">{activePlayer?.[0] || "J"}</AvatarFallback>
+                <AvatarFallback className="bg-pink-300">
+                  {gamePlayers.find((p) => p.id === activePlayer)?.name[0] || "J"}
+                </AvatarFallback>
               </Avatar>
-              <span>{activePlayer}</span>
+              <span>{gamePlayers.find((p) => p.id === activePlayer)?.name || "Jugador"}</span>
             </div>
           </div>
         )}
 
-        {type === "dueto" && (
+        {type === "dueto" && activePlayer && partnerPlayer && (
           <div className="bg-purple-50 p-4 rounded-lg">
-            <p className="font-medium mb-2">Selecciona un compañero para el dueto:</p>
+            <p className="font-medium mb-2">Jugadores del dueto:</p>
 
-            {partnerPlayer ? (
-              <div className="flex items-center justify-center gap-4 mb-4">
-                <div className="text-center">
-                  <Avatar className="mx-auto mb-2">
-                    <AvatarFallback className="bg-pink-300">{activePlayer?.[0] || "J"}</AvatarFallback>
-                  </Avatar>
-                  <p className="text-sm">{activePlayer}</p>
-                </div>
-                <span className="text-2xl">+</span>
-                <div className="text-center">
-                  <Avatar className="mx-auto mb-2">
-                    <AvatarFallback className="bg-purple-300">{partnerPlayer?.[0] || "P"}</AvatarFallback>
-                  </Avatar>
-                  <p className="text-sm">{partnerPlayer}</p>
-                </div>
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <div className="text-center">
+                <Avatar className="mx-auto mb-2">
+                  <AvatarFallback className="bg-pink-300">
+                    {gamePlayers.find((p) => p.id === activePlayer)?.name[0] || "J"}
+                  </AvatarFallback>
+                </Avatar>
+                <p className="text-sm">{gamePlayers.find((p) => p.id === activePlayer)?.name || "Jugador 1"}</p>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                {players
-                  .filter((p) => p !== activePlayer)
-                  .map((player) => (
-                    <Button
-                      key={player}
-                      variant="outline"
-                      className="border-purple-300 hover:bg-purple-100"
-                      onClick={() => selectPartner(player)}
-                    >
-                      <UserPlus className="mr-2 h-4 w-4" />
-                      {player}
-                    </Button>
-                  ))}
+              <span className="text-2xl">+</span>
+              <div className="text-center">
+                <Avatar className="mx-auto mb-2">
+                  <AvatarFallback className="bg-purple-300">
+                    {gamePlayers.find((p) => p.id === partnerPlayer)?.name[0] || "P"}
+                  </AvatarFallback>
+                </Avatar>
+                <p className="text-sm">{gamePlayers.find((p) => p.id === partnerPlayer)?.name || "Jugador 2"}</p>
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -181,13 +170,13 @@ export function GameMechanics({
             <p className="font-medium mb-2">Todos participan:</p>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-2">
-              {players.map((player) => (
-                <div key={player} className="bg-white p-3 rounded-lg shadow-sm">
+              {gamePlayers.map((player) => (
+                <div key={player.id} className="bg-white p-3 rounded-lg shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
                     <Avatar>
-                      <AvatarFallback className="bg-blue-300">{player[0]}</AvatarFallback>
+                      <AvatarFallback className="bg-blue-300">{player.name[0]}</AvatarFallback>
                     </Avatar>
-                    <span className="text-sm font-medium">{player}</span>
+                    <span className="text-sm font-medium">{player.name}</span>
                   </div>
                 </div>
               ))}
@@ -199,7 +188,6 @@ export function GameMechanics({
         <Button
           onClick={startVoting}
           className="bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white"
-          disabled={type === "dueto" && !partnerPlayer}
         >
           Iniciar votación
         </Button>

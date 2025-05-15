@@ -191,7 +191,7 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
   const { toast } = useToast()
 
   // Máximo de mensajes que el usuario puede enviar
-  const MAX_USER_MESSAGES = 1
+  const MAX_USER_MESSAGES = 2
 
   // Obtener el contexto adecuado según la carta
   const context = chatContexts[cardName] || {
@@ -261,7 +261,7 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
         setFinalResponse(newMessage) // Guardar el último mensaje del usuario como respuesta final
 
         const finalMsg = {
-          id: messages.length + 1,
+          id: messages.length + 2,
           text: finalResponseText,
           sender: "other" as const,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -278,7 +278,7 @@ export function ContextualChat({ cardType, cardName, challenge, onSubmit }: Cont
       } else {
         // Si no ha alcanzado el límite, enviar una respuesta normal
         const responseMsg = {
-          id: messages.length + 1,
+          id: messages.length + 2,
           text: getRandomResponse(cardName),
           sender: "other" as const,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),

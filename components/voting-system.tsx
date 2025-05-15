@@ -23,6 +23,7 @@ interface VotingSystemProps {
   partnerPlayer?: string
   onComplete: (scores: Record<string, number>) => void
   mesaId: string
+  currentUserId?: string
 }
 
 // Crear cliente de Supabase
@@ -37,6 +38,7 @@ export function VotingSystem({
   partnerPlayer,
   onComplete,
   mesaId,
+  currentUserId,
 }: VotingSystemProps) {
   const [votes, setVotes] = useState<Record<string, { up: number; down: number }>>({})
   const [hasVoted, setHasVoted] = useState<Record<string, boolean>>({})
@@ -70,7 +72,7 @@ export function VotingSystem({
     }
   }, [timeLeft, votingComplete])
 
-  // Suscribirse a cambios en tiempo real (simulado)
+  // Suscribirse a cambios en tiempo real
   useEffect(() => {
     // En una implementación real, aquí se suscribiría a cambios en Supabase
     const channel = supabase
@@ -99,6 +101,16 @@ export function VotingSystem({
   }
 
   const castVote = async (playerId: string, voteType: "up" | "down") => {
+    // No permitir votar por uno mismo
+    if (playerId === currentUserId) {
+      toast({
+        title: "No puedes votarte a ti mismo",
+        description: "Vota por otros jugadores",
+        variant: "destructive",
+      })
+      return
+    }
+
     // Evitar votar más de una vez por el mismo jugador
     if (hasVoted[playerId]) {
       toast({
@@ -123,6 +135,24 @@ export function VotingSystem({
       ...prev,
       [playerId]: true,
     }))
+
+    // Enviar el voto a la API
+    try {
+      await fetch("/api/votaciones", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mesaId,
+          respuestaId: 1, // Esto debería ser el ID real de la respuesta
+          usuarioId: currentUserId,
+          voto: voteType === "up" ? 1 : -1,
+        }),
+      })
+    } catch (error) {
+      console.error("Error al enviar voto:", error)
+    }
 
     // En una implementación real, enviar el voto a Supabase
     try {
@@ -213,7 +243,7 @@ export function VotingSystem({
                     variant="outline"
                     className="border-green-300 hover:bg-green-100"
                     onClick={() => castVote(activePlayer || "", "up")}
-                    disabled={hasVoted[activePlayer || ""]}
+                    disabled={hasVoted[activePlayer || ""] || activePlayer === currentUserId}
                   >
                     <ThumbsUp className="mr-2 h-4 w-4 text-green-600" />
                     Me gusta ({votes[activePlayer || ""]?.up || 0})
@@ -222,7 +252,7 @@ export function VotingSystem({
                     variant="outline"
                     className="border-red-300 hover:bg-red-100"
                     onClick={() => castVote(activePlayer || "", "down")}
-                    disabled={hasVoted[activePlayer || ""]}
+                    disabled={hasVoted[activePlayer || ""] || activePlayer === currentUserId}
                   >
                     <ThumbsDown className="mr-2 h-4 w-4 text-red-600" />
                     No me gusta ({votes[activePlayer || ""]?.down || 0})
@@ -271,7 +301,12 @@ export function VotingSystem({
                       castVote(activePlayer || "", "up")
                       castVote(partnerPlayer || "", "up")
                     }}
-                    disabled={hasVoted[activePlayer || ""] || hasVoted[partnerPlayer || ""]}
+                    disabled={
+                      hasVoted[activePlayer || ""] ||
+                      hasVoted[partnerPlayer || ""] ||
+                      activePlayer === currentUserId ||
+                      partnerPlayer === currentUserId
+                    }
                   >
                     <ThumbsUp className="mr-2 h-4 w-4 text-green-600" />
                     Buen dueto
@@ -283,7 +318,12 @@ export function VotingSystem({
                       castVote(activePlayer || "", "down")
                       castVote(partnerPlayer || "", "down")
                     }}
-                    disabled={hasVoted[activePlayer || ""] || hasVoted[partnerPlayer || ""]}
+                    disabled={
+                      hasVoted[activePlayer || ""] ||
+                      hasVoted[partnerPlayer || ""] ||
+                      activePlayer === currentUserId ||
+                      partnerPlayer === currentUserId
+                    }
                   >
                     <ThumbsDown className="mr-2 h-4 w-4 text-red-600" />
                     Mal dueto
@@ -326,7 +366,7 @@ export function VotingSystem({
                           variant="outline"
                           className="border-green-300 hover:bg-green-100 h-8 w-8 p-0"
                           onClick={() => castVote(player.id, "up")}
-                          disabled={hasVoted[player.id]}
+                          disabled={hasVoted[player.id] || player.id === currentUserId}
                         >
                           <ThumbsUp className="h-4 w-4 text-green-600" />
                         </Button>
@@ -335,7 +375,7 @@ export function VotingSystem({
                           variant="outline"
                           className="border-red-300 hover:bg-red-100 h-8 w-8 p-0"
                           onClick={() => castVote(player.id, "down")}
-                          disabled={hasVoted[player.id]}
+                          disabled={hasVoted[player.id] || player.id === currentUserId}
                         >
                           <ThumbsDown className="h-4 w-4 text-red-600" />
                         </Button>
