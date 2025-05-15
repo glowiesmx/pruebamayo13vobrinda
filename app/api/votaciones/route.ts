@@ -69,6 +69,35 @@ export async function POST(request: Request) {
 
     const totalScore = votesData.reduce((sum, vote) => sum + vote.voto, 0)
 
+    // Obtener el usuario que creó la respuesta
+    const { data: respuestaData, error: respuestaError } = await supabase
+      .from("respuestas")
+      .select("usuario_id")
+      .eq("id", respuestaId)
+      .single()
+
+    if (respuestaError) throw respuestaError
+
+    // Actualizar los puntos del jugador que recibió el voto
+    if (respuestaData && respuestaData.usuario_id) {
+      try {
+        await fetch(`${request.headers.get("origin")}/api/jugadores/puntos`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mesaId,
+            usuarioId: respuestaData.usuario_id,
+            puntos: voto, // Sumar o restar puntos según el voto
+          }),
+        })
+      } catch (puntosError) {
+        console.error("Error al actualizar puntos:", puntosError)
+        // Continuar incluso si hay error al actualizar puntos
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: "Voto registrado correctamente",

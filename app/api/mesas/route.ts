@@ -6,17 +6,62 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+// Lista de palabras divertidas para generar códigos
+const palabrasDivertidas = [
+  "fiesta",
+  "tequila",
+  "baile",
+  "rumba",
+  "salsa",
+  "mezcal",
+  "mariachi",
+  "tacos",
+  "guacamole",
+  "piñata",
+  "confeti",
+  "margarita",
+  "karaoke",
+  "cumbia",
+  "reggaeton",
+  "perreo",
+  "antro",
+  "peda",
+  "chela",
+  "shot",
+  "brindis",
+  "copa",
+  "botella",
+  "hielo",
+  "limón",
+  "sal",
+  "música",
+  "amigos",
+  "noche",
+  "diversión",
+  "risa",
+  "juego",
+  "carta",
+]
+
+// Función para generar un código amigable
+function generarCodigoAmigable() {
+  const palabra1 = palabrasDivertidas[Math.floor(Math.random() * palabrasDivertidas.length)]
+  const palabra2 = palabrasDivertidas[Math.floor(Math.random() * palabrasDivertidas.length)]
+  const numero = Math.floor(Math.random() * 100)
+  return `${palabra1}-${palabra2}-${numero}`
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { nombre, userId, userName } = body
+    const { nombre, userId, userName, mesaId: customMesaId } = body
 
     if (!userId) {
       return NextResponse.json({ error: "Se requiere ID de usuario" }, { status: 400 })
     }
 
-    // Generar ID único para la mesa
-    const mesaId = `mesa-${Math.floor(Math.random() * 10000)}`
+    // Usar el ID personalizado si se proporciona, o generar uno nuevo
+    const mesaId = customMesaId || generarCodigoAmigable()
 
     // Crear la mesa
     const { data: mesa, error: mesaError } = await supabase

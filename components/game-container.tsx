@@ -8,13 +8,16 @@ import { RewardDisplay } from "./reward-display"
 import { createClient } from "@supabase/supabase-js"
 import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
-import { Loader2, AlertCircle, Users } from "lucide-react"
+import { Loader2, AlertCircle, Users, Eye, Share2 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { ContextualChat } from "./contextual-chat"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { MesaStats } from "./mesa-stats"
+import { RespuestasJugadores } from "./respuestas-jugadores"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ShareButtons } from "./share-buttons"
 
 // Definir los pasos del juego
 enum GameSteps {
@@ -44,8 +47,10 @@ export function GameContainer() {
   const [userId, setUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [jugadores, setJugadores] = useState<any[]>([])
+  const [activeTab, setActiveTab] = useState<string>("jugar")
   const { toast } = useToast()
   const router = useRouter()
+  const [showShareModal, setShowShareModal] = useState(false)
 
   // Verificar si el usuario está autenticado
   useEffect(() => {
@@ -70,6 +75,16 @@ export function GameContainer() {
       // Si no hay mesa, crear una nueva
       createMesa(storedUserId, storedUserName)
     }
+
+    // Verificar si existe el bucket de almacenamiento
+    fetch("/api/create-storage-bucket")
+      .then((response) => response.json())
+      .then((data) => {
+        console.log("Bucket status:", data)
+      })
+      .catch((error) => {
+        console.error("Error al verificar bucket:", error)
+      })
   }, [router])
 
   // Crear una nueva mesa
@@ -128,6 +143,40 @@ export function GameContainer() {
       // Si hay una carta activa, cargarla
       if (data.mesa?.carta_actual) {
         // Aquí cargaríamos la carta y el estado del juego
+        const { data: cartaData, error: cartaError } = await supabase
+          .from("cartas_genz")
+          .select("*")
+          .eq("id", data.mesa.carta_actual)
+          .single()
+
+        if (!cartaError && cartaData) {
+          setSelectedCard(cartaData)
+          setGameStep(GameSteps.CHALLENGE)
+
+          // Obtener el desafío para esta carta
+          try {
+            const challengeResponse = await fetch("/api/generate-challenge", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                carta: cartaData,
+                userVibe: "delulu",
+              }),
+            })
+
+            if (challengeResponse.ok) {
+              const challengeData = await challengeResponse.json()
+              setChallenge(challengeData.desafio)
+              setChallengeSource(challengeData.source || "unknown")
+            }
+          } catch (error) {
+            console.error("Error al obtener desafío:", error)
+            setChallenge(`Confiesa algo vergonzoso relacionado con ${cartaData.nombre} 🍸 #MomentoViral`)
+            setChallengeSource("error")
+          }
+        }
       }
     } catch (error) {
       console.error("Error:", error)
@@ -166,6 +215,17 @@ export function GameContainer() {
           toast({
             title: "Nuevo voto",
             description: "Alguien ha votado por una respuesta",
+          })
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "respuestas", filter: `mesa_id=eq.${mesaId}` },
+        (payload) => {
+          // Notificar cuando hay una nueva respuesta
+          toast({
+            title: "Nueva respuesta",
+            description: "Alguien ha respondido al desafío",
           })
         },
       )
@@ -399,6 +459,9 @@ export function GameContainer() {
 
       setReward(data)
       setGameStep(GameSteps.REWARD)
+
+      // Cambiar a la pestaña de respuestas para ver las respuestas de otros jugadores
+      setActiveTab("respuestas")
     } catch (error) {
       console.error("Error:", error)
 
@@ -435,6 +498,54 @@ export function GameContainer() {
     }
   }
 
+  const handleVote = async (respuestaId: number, voto: number) => {
+    if (!userId || !mesaId) {
+      toast({
+        title: "Error",
+        description: "No se pudo registrar tu voto. Inicia sesión nuevamente.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const response = await fetch("/api/votaciones", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mesaId,
+          respuestaId,
+          usuarioId: userId,
+          voto,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Error al registrar voto")
+      }
+
+      const data = await response.json()
+
+      // Actualizar puntos del jugador
+      if (data.success) {
+        toast({
+          title: "Voto registrado",
+          description: `Puntuación total: ${data.totalScore}`,
+        })
+      }
+    } catch (error) {
+      console.error("Error al votar:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo registrar tu voto",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
   const resetGame = () => {
     setSelectedCard(null)
     setChallenge("")
@@ -444,6 +555,7 @@ export function GameContainer() {
     setReward(null)
     setApiError(null)
     setGameStep(GameSteps.START)
+    setActiveTab("jugar")
   }
 
   const renderGameStep = () => {
@@ -538,7 +650,22 @@ export function GameContainer() {
     <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center bg-white/80 p-3 rounded-lg">
         <div className="flex items-center gap-2">
-          <span className="bg-pink-100 text-pink-800 text-xs font-medium px-2.5 py-0.5 rounded">Mesa: {mesaId}</span>
+          <div className="flex items-center gap-1">
+            <span className="bg-pink-100 text-pink-800 text-xs font-medium px-2.5 py-0.5 rounded">Mesa: {mesaId}</span>
+            {mesaId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => {
+                  // Mostrar modal o drawer de compartir
+                  setShowShareModal(true)
+                }}
+              >
+                <Share2 className="h-3 w-3 text-pink-800" />
+              </Button>
+            )}
+          </div>
           <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200 flex items-center">
             <Users className="h-3 w-3 mr-1" /> {jugadores.length} jugadores
           </Badge>
@@ -569,28 +696,69 @@ export function GameContainer() {
         </div>
       )}
 
-      {gameStep === GameSteps.START && (
-        <Card className="p-6 text-center bg-white/90 border-dashed border-pink-400 border-2">
-          <h2 className="text-2xl font-bold mb-4 text-pink-600">
-            ¿Listo para ser el main character de tu propia comedia de errores? 💃
-          </h2>
-          <p className="text-lg mb-6">Selecciona una carta y prepárate para el desmadre con tus amigos</p>
-          {jugadores.length > 0 && (
-            <div className="bg-purple-50 p-4 rounded-lg">
-              <h3 className="font-medium mb-2">Jugadores en esta mesa:</h3>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {jugadores.map((jugador) => (
-                  <Badge key={jugador.id} variant="outline" className="bg-white">
-                    {jugador.nombre}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="jugar">Jugar</TabsTrigger>
+          <TabsTrigger value="respuestas" className="flex items-center gap-1">
+            <Eye className="h-4 w-4" />
+            Ver Respuestas
+          </TabsTrigger>
+        </TabsList>
 
-      {renderGameStep()}
+        <TabsContent value="jugar" className="mt-4">
+          {gameStep === GameSteps.START && (
+            <Card className="p-6 text-center bg-white/90 border-dashed border-pink-400 border-2">
+              <h2 className="text-2xl font-bold mb-4 text-pink-600">
+                ¿Listo para ser el main character de tu propia comedia de errores? 💃
+              </h2>
+              <p className="text-lg mb-6">Selecciona una carta y prepárate para el desmadre con tus amigos</p>
+              {jugadores.length > 0 && (
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h3 className="font-medium mb-2">Jugadores en esta mesa:</h3>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {jugadores.map((jugador) => (
+                      <Badge key={jugador.id} variant="outline" className="bg-white">
+                        {jugador.nombre}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {renderGameStep()}
+        </TabsContent>
+
+        <TabsContent value="respuestas" className="mt-4">
+          <RespuestasJugadores mesaId={mesaId} cartaId={selectedCard?.id} onVote={handleVote} />
+        </TabsContent>
+      </Tabs>
+      {showShareModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowShareModal(false)}
+        >
+          <div className="bg-white p-6 rounded-lg max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-bold mb-4 text-center">Compartir mesa</h3>
+            <p className="text-center mb-4">
+              Invita a tus amigos a unirse a la mesa <span className="font-bold text-pink-600">{mesaId}</span>
+            </p>
+
+            <ShareButtons
+              url={`${window.location.origin}/join?mesa=${mesaId}`}
+              title="¡Únete a mi mesa en Brinda!"
+              message={`¡Únete a mi mesa en Brinda! Usa el código: ${mesaId}`}
+            />
+
+            <div className="mt-4 flex justify-center">
+              <Button variant="outline" onClick={() => setShowShareModal(false)}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

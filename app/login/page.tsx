@@ -11,11 +11,57 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@supabase/supabase-js"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, UserPlus, LogIn, Users } from "lucide-react"
+import { JoinMesaForm } from "@/components/join-mesa-form"
 
 // Crear cliente de Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 const supabase = createClient(supabaseUrl, supabaseKey)
+
+// Lista de palabras divertidas para generar códigos
+const palabrasDivertidas = [
+  "fiesta",
+  "tequila",
+  "baile",
+  "rumba",
+  "salsa",
+  "mezcal",
+  "mariachi",
+  "tacos",
+  "guacamole",
+  "piñata",
+  "confeti",
+  "margarita",
+  "karaoke",
+  "cumbia",
+  "reggaeton",
+  "perreo",
+  "antro",
+  "peda",
+  "chela",
+  "shot",
+  "brindis",
+  "copa",
+  "botella",
+  "hielo",
+  "limón",
+  "sal",
+  "música",
+  "amigos",
+  "noche",
+  "diversión",
+  "risa",
+  "juego",
+  "carta",
+]
+
+// Función para generar un código amigable
+function generarCodigoAmigable() {
+  const palabra1 = palabrasDivertidas[Math.floor(Math.random() * palabrasDivertidas.length)]
+  const palabra2 = palabrasDivertidas[Math.floor(Math.random() * palabrasDivertidas.length)]
+  const numero = Math.floor(Math.random() * 100)
+  return `${palabra1}-${palabra2}-${numero}`
+}
 
 export default function LoginPage() {
   const [nombre, setNombre] = useState("")
@@ -78,8 +124,8 @@ export default function LoginPage() {
       if (mode === "join" && mesaId) {
         await joinMesa(userId, mesaId)
       } else {
-        // Redirigir al juego
-        router.push("/")
+        // Crear una nueva mesa con código amigable
+        await createMesa(userId, nombre)
       }
     } catch (error) {
       console.error("Error:", error)
@@ -90,6 +136,47 @@ export default function LoginPage() {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const createMesa = async (userId: string, userName: string) => {
+    try {
+      // Generar un código amigable para la mesa
+      const mesaId = generarCodigoAmigable()
+
+      const response = await fetch("/api/mesas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          userName,
+          mesaId, // Pasar el código amigable generado
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Error al crear mesa")
+      }
+
+      const data = await response.json()
+      localStorage.setItem("mesaId", data.mesaId)
+
+      // Redirigir al juego
+      router.push("/")
+
+      toast({
+        title: "¡Mesa creada!",
+        description: `Tu código de mesa es: ${data.mesaId}`,
+      })
+    } catch (error) {
+      console.error("Error al crear mesa:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo crear la mesa de juego",
+        variant: "destructive",
+      })
     }
   }
 
@@ -147,6 +234,16 @@ export default function LoginPage() {
     }
   }
 
+  const handleJoinMesa = (mesaId: string) => {
+    setMesaId(mesaId)
+  }
+
+  const handleCreateNewMesa = () => {
+    // Simplemente cambiamos al modo login para crear una nueva mesa
+    setMode("login")
+    setMesaId("")
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-400 to-teal-400 p-4 md:p-8 flex items-center justify-center">
       <Card className="w-full max-w-md">
@@ -181,23 +278,12 @@ export default function LoginPage() {
               />
             </div>
 
-            {mode === "join" && (
-              <div className="space-y-2">
-                <Label htmlFor="mesaId">Código de la mesa</Label>
-                <Input
-                  id="mesaId"
-                  placeholder="Ej: mesa-1234"
-                  value={mesaId}
-                  onChange={(e) => setMesaId(e.target.value)}
-                  required={mode === "join"}
-                />
-              </div>
-            )}
+            {mode === "join" && <JoinMesaForm onJoin={handleJoinMesa} onCreateNew={handleCreateNewMesa} />}
 
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
-              disabled={loading}
+              disabled={loading || (mode === "join" && !mesaId)}
             >
               {loading ? (
                 <>
