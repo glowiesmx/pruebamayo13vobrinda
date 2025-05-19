@@ -412,6 +412,7 @@ export function GameContainer() {
           carta: selectedCard,
           respuestaId,
           mesaId,
+          usuarioId: userId,
         }),
       })
 

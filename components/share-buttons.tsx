@@ -68,12 +68,34 @@ export function ShareButtons({ url, title, message }: ShareButtonsProps) {
 
   // Función para compartir en Instagram (nota: Instagram no tiene API de compartir directa)
   const shareOnInstagram = () => {
-    // Como Instagram no tiene API de compartir directa, copiamos al portapapeles
-    copyToClipboard(`${message} ${url}`)
+    // Crear un mensaje combinado que incluya tanto el texto como la URL
+    const combinedMessage = `${message} ${url}`
+    copyToClipboard(combinedMessage)
+
+    // Mostrar instrucciones más claras
     toast({
-      title: "Listo para Instagram",
-      description: "Enlace copiado. Pégalo en Instagram para compartir",
+      title: "Listo para subir a tu finsta",
+      description:
+        "Mensaje copiado al portapapeles. Abre Instagram, crea una nueva publicación o historia y pega el texto.",
     })
+
+    // Intentar abrir Instagram si es posible
+    try {
+      // En móviles, intentar abrir la app de Instagram
+      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        window.location.href = "instagram://"
+
+        // Dar tiempo para que se abra Instagram y luego mostrar otro toast
+        setTimeout(() => {
+          toast({
+            title: "¡Pega el texto en Instagram!",
+            description: "Crea una nueva publicación o historia y pega el texto que copiamos.",
+          })
+        }, 1500)
+      }
+    } catch (error) {
+      console.error("Error al intentar abrir Instagram:", error)
+    }
   }
 
   // Función para compartir por SMS
@@ -131,7 +153,7 @@ export function ShareButtons({ url, title, message }: ShareButtonsProps) {
         className="bg-purple-100 hover:bg-purple-200 text-purple-700"
       >
         <Instagram className="mr-2 h-4 w-4" />
-        Instagram
+        Subir a finsta
       </Button>
 
       {/* SMS */}

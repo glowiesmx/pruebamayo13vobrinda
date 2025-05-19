@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { analizarRespuesta, guardarAnalisis } from "@/lib/analisis-service"
+import { obtenerRecompensasPersonalizadas } from "@/lib/recompensas-service"
 
 // Asegurar que este código solo se ejecuta en el servidor
 export const runtime = "nodejs"
@@ -12,23 +14,17 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 export async function POST(request: Request) {
   try {
     // Intentar parsear el cuerpo de la solicitud
-    let respuesta, audioUrl, carta
+    let respuesta, audioUrl, carta, usuarioId, mesaId, respuestaId
     try {
       const body = await request.json()
       respuesta = body.respuesta || ""
       audioUrl = body.audioUrl || ""
       carta = body.carta || {}
+      usuarioId = body.usuarioId || ""
+      mesaId = body.mesaId || ""
+      respuestaId = body.respuestaId || null
     } catch (parseError) {
       console.error("Error parsing request body:", parseError)
-      return NextResponse.json({
-        resultado: generarResultadoPredeterminado(),
-        recompensas: generarRecompensasAleatorias(),
-      })
-    }
-
-    // Si no hay API key de OpenAI, devolver un resultado predeterminado
-    if (!process.env.OPENAI_KEY) {
-      console.log("OpenAI API key no configurada, usando resultado predeterminado")
       return NextResponse.json({
         resultado: generarResultadoPredeterminado(),
         recompensas: generarRecompensasAleatorias(),
@@ -41,65 +37,40 @@ export async function POST(request: Request) {
       const descripcionCarta = carta && carta.descripcion ? carta.descripcion : "un desafío"
       const respuestaUsuario = respuesta || "respuesta del usuario"
 
-      const prompt = `
-        Eres el ex más tóxico de Reddit. Evalúa esta respuesta: "${respuestaUsuario}"
-        - Da feedback en 2 líneas máximo con slang de Gen Z
-        - Si aprueba, sugiere una recompensa ridícula (ej: "PDF de memes para stalkear")
-        - Usa 1 emoji y 1 referencia a Instagram
-        
-        Contexto: La carta era "${nombreCarta}" que trata sobre "${descripcionCarta}"
-        ${audioUrl ? "El usuario también grabó un audio (no puedes escucharlo, pero asume que fue increíble)" : ""}
-      `
+      // 1. Analizar la respuesta con nuestro nuevo servicio
+      const analisis = await analizarRespuesta(respuestaUsuario, audioUrl, nombreCarta, descripcionCarta)
 
-      // Usar fetch directamente en lugar del cliente OpenAI
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.9,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.text()
-        console.error("Error en la respuesta de OpenAI:", response.status, errorData)
-        throw new Error(`Error en la respuesta de OpenAI: ${response.status}`)
+      // 2. Guardar el análisis en la base de datos
+      if (usuarioId && mesaId) {
+        await guardarAnalisis(
+          analisis,
+          respuestaId,
+          usuarioId,
+          mesaId,
+          respuestaUsuario,
+          audioUrl,
+          nombreCarta,
+          descripcionCarta,
+        )
       }
 
-      const data = await response.json()
+      // 3. Generar feedback personalizado basado en el análisis
+      const feedback = analisis.analisis_completo.feedback || generarResultadoPredeterminado()
 
-      // Verificar que la respuesta tiene la estructura esperada
-      if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error("Respuesta de OpenAI inválida o incompleta")
-      }
+      // 4. Obtener recompensas personalizadas basadas en el análisis
+      const recompensas = await obtenerRecompensasPersonalizadas(analisis, nombreCarta)
 
-      const resultado = data.choices[0].message.content || "Respuesta no generada"
-
-      // Generar recompensas aleatorias
-      const recompensas = generarRecompensasAleatorias()
-
-      // Intentar guardar las recompensas en la base de datos, pero no fallar si hay error
-      try {
-        for (const recompensa of recompensas) {
-          await supabase.from("recompensas").insert({
-            nombre: recompensa.nombre,
-            descripcion: recompensa.descripcion,
-            tipo: recompensa.tipo,
-          })
-        }
-      } catch (dbError) {
-        console.error("Error al guardar recompensas:", dbError)
-        // Continuar incluso si hay error en la base de datos
-      }
-
+      // 5. Devolver el resultado
       return NextResponse.json({
-        resultado: resultado,
+        resultado: feedback,
         recompensas,
+        analisis: {
+          creatividad: analisis.puntuacion_creatividad,
+          humor: analisis.puntuacion_humor,
+          autenticidad: analisis.puntuacion_autenticidad,
+          viral: analisis.puntuacion_viral,
+          categoria: analisis.analisis_completo.categoria_principal || "Humor",
+        },
       })
     } catch (openaiError) {
       console.error("Error calling OpenAI:", openaiError)
